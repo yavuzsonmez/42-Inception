@@ -1,0 +1,159 @@
+
+version: "3"
+
+networks:
+  inception: {}
+
+volumes:
+    mariadb_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: /home/home/data/mariadb
+    wordpress_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: /home/home/data/wordpress
+    adminer_data:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: /home/home/data/adminer
+
+services:
+  mariadb:
+    build:
+      context: requirements/mariadb
+      dockerfile: Dockerfile
+      args:
+       - DB_HOSTNAME=${DB_HOSTNAME}
+       - WP_DB_NAME=${WP_DB_NAME}
+       - MYSQL_USER=${MYSQL_USER}
+       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    image: mariadb
+    container_name: MARIADB
+    networks:
+      - inception
+    volumes:
+      - mariadb_data:/var/lib/mysql:rw
+    restart: unless-stopped
+
+  wordpress:
+    build:
+      context: requirements/wordpress
+      dockerfile: Dockerfile
+    image: wordpress
+    container_name: WORDPRESS
+    networks:
+      - inception
+    volumes:
+      - wordpress_data:/var/www/wordpress:rw
+    depends_on:
+       - mariadb
+       - redis-cache
+    environment:
+       - DB_HOSTNAME=${DB_HOSTNAME}
+       - WP_DB_NAME=${WP_DB_NAME}
+       - MYSQL_USER=${MYSQL_USER}
+       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+       - WP_TITLE=${WP_TITLE}
+       - WP_ADMIN_USER=${WP_ADMIN_USER}
+       - WP_ADMIN_PASSWORD=${WP_ADMIN_PASSWORD}
+       - WP_ADMIN_MAIL=${WP_ADMIN_MAIL}
+       - WP_USER=${WP_USER}
+       - WP_USER_MAIL=${WP_USER_MAIL}
+       - WP_USER_PASSWORD=${WP_USER_PASSWORD}
+       - WP_URL=${WP_URL}
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: requirements/nginx
+      dockerfile: Dockerfile
+    image: nginx
+    container_name: NGINX
+    depends_on:
+     - wordpress
+    ports:
+      - "4242:443"
+    networks:
+      - inception
+    volumes:
+      - wordpress_data:/var/www/wordpress:ro
+      - adminer_data:/var/www/adminer:ro
+    restart: unless-stopped
+
+  static-webpage:
+    build:
+      context: requirements/bonus/static-webpage
+      dockerfile: Dockerfile
+    image: pomodoro
+    container_name: POMODORO
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+
+  ftp-server:
+    build:
+      context: requirements/bonus/ftp-server
+      dockerfile: Dockerfile
+      args:
+       - FTP_USER=${FTP_USER}
+       - FTP_PASSWORD=${FTP_PASSWORD}
+    image: vsftpd
+    container_name: VSFTPD
+    depends_on:
+     - wordpress
+    environment:
+       - FTP_USER=${FTP_USER}
+    ports:
+      - "21:21"
+      - "20:20"
+      - "21000-21010:21000-21010"
+    networks:
+      - inception
+    volumes:
+      - wordpress_data:/home/$FTP_USER/FTP/wordpress:rw
+    restart: unless-stopped
+
+  adminer:
+    build:
+      context: requirements/bonus/adminer
+      dockerfile: Dockerfile
+    depends_on:
+     - wordpress
+    image: adminer
+    container_name: ADMINER
+    networks:
+      - inception
+    volumes:
+      - adminer_data:/var/www/adminer:ro
+    restart: unless-stopped
+
+  redis-cache:
+    build:
+      context: requirements/bonus/redis-cache
+      dockerfile: Dockerfile
+    image: redis
+    container_name: REDIS
+    networks:
+      - inception
+    restart: unless-stopped
+
+  dozzle:
+    build:
+      context: requirements/bonus/dozzle
+      dockerfile: Dockerfile
+    image: dozzle
+    container_name: DOZZLE
+    ports:
+      - "8888:3000"
+    networks:
+      - inception
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
